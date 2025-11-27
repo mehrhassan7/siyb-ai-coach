@@ -3,6 +3,8 @@ import json
 import re
 import streamlit as st
 from groq import Groq
+from rank_bm25 import BM25Okapi
+
 
 
 # ================================
@@ -14,37 +16,61 @@ client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 # ================================
 # 2. LOAD GYB CHUNKS
 # ================================
-def _tokenize(text):
-    return set(re.findall(r"\w+", text.lower()))
+def _tokenize(text: str):
+    """Very simple word tokenizer for retrieval (list of tokens)."""
+    return re.findall(r"\w+", text.lower())
+
+
 
 GYB_SNIPPETS = []
-if os.path.exists("gyb_chunks.json"):
-    with open("gyb_chunks.json", "r", encoding="utf-8") as f:
+gyb_path = "gyb_chunks.json"
+
+if os.path.exists(gyb_path):
+    with open(gyb_path, "r", encoding="utf-8") as f:
         GYB_SNIPPETS = json.load(f)
 
-for snip in GYB_SNIPPETS:
-    snip["tokens"] = _tokenize(snip["content"])
+# Build BM25 index over all chunk contents
+BM25_INDEX = None
+CORPUS_TOKENS = []
+
+if GYB_SNIPPETS:
+    for snippet in GYB_SNIPPETS:
+        tokens = _tokenize(snippet.get("content", ""))
+        snippet["tokens"] = tokens  # keep if you want for debugging
+        CORPUS_TOKENS.append(tokens)
+
+    BM25_INDEX = BM25Okapi(CORPUS_TOKENS)
 
 
-def get_relevant_chunks(query, k=3):
-    if not query or not GYB_SNIPPETS:
+def get_relevant_snippets(query: str, k: int = 3, min_score: float = 0.5):
+    """
+    BM25-based retrieval:
+    - Tokenize user query
+    - Use BM25Okapi to score chunks
+    - Return top-k chunks with score above min_score
+    """
+    if not query or not GYB_SNIPPETS or BM25_INDEX is None:
         return []
-    q = _tokenize(query)
-    scored = []
-    for s in GYB_SNIPPETS:
-        overlap = len(q & s["tokens"])
-        scored.append((overlap, s))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [s for score, s in scored if score > 0][:k]
 
+    query_tokens = _tokenize(query)
+    scores = BM25_INDEX.get_scores(query_tokens)
 
-def looks_like_question(text):
-    if not text:
-        return False
-    t = text.lower().strip()
-    if t.endswith("?"):
-        return True
-    return t.startswith(("how", "what", "why", "when", "where", "who", "can", "could", "should"))
+    # Sort chunks by score (highest first)
+    ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
+
+    results = []
+    for idx, score in ranked:
+        if score < min_score:
+            # below threshold → ignore
+            continue
+        snippet = dict(GYB_SNIPPETS[idx])  # copy
+        snippet["score"] = float(score)
+        results.append(snippet)
+        if len(results) >= k:
+            break
+
+    return results
+
 
 
 # ================================
