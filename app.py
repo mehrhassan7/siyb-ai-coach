@@ -93,34 +93,44 @@ def looks_like_question(text: str) -> bool:
 # 3. LLM FEEDBACK
 # ================================
 def llm_feedback(stage, user_answer, gyb_data):
-    ...
-    # Build a richer retrieval query using the business idea + stage
+    stage_instruction = {
+        "ask_background":
+            "Appreciate the learner’s background and say why skills/experience help in choosing a business idea.",
+        "ask_idea":
+            "Summarize the idea in 3–4 bullet points, give one strength and one improvement point.",
+        "ask_customers":
+            "Check if the customer group is specific. Suggest 2–3 improvements.",
+        "ask_competitors":
+            "Give 2 simple suggestions on how to stand out vs competitors.",
+        "ask_location":
+            "Explain (briefly) why location matters and what to observe.",
+        "general":
+            "Give simple, friendly entrepreneurship advice in 4–6 sentences.",
+    }.get(stage, "Give friendly advice.")
+
+    # Build improved retrieval query (stage + idea + user answer)
     idea = gyb_data.get("idea", "")
     retrieval_query = f"Stage: {stage}. Idea: {idea}. Learner text: {user_answer}"
 
     chunks = get_relevant_snippets(retrieval_query, k=3)
-
-
+    
     if chunks:
-        context = "\n\n".join([f"- {c['content'][:300]}..." for c in chunks])
+        context = "\n\n".join(
+            [f"- {c['content'][:300]}..." for c in chunks]
+        )
     else:
-        context = "No relevant chunks found. Give general GYB advice."
+        context = "No relevant chunks found. Give general SIYB-style advice."
 
-system_msg = {
-    "role": "system",
-    "content": (
-        "You are a friendly SIYB GYB (Generate Your Business Idea) coach from "
-        "the ILO Start and Improve Your Business (SIYB) programme.\n"
-        "Use ONLY generic SIYB-style language. Do NOT invent or mention:\n"
-        "- external book titles or authors,\n"
-        "- other training programmes,\n"
-        "- fake expansions of GYB like 'Growth for Youth in Business'.\n"
-        "Just speak as a neutral SIYB trainer.\n\n"
-        f"{stage_instruction}\n\n"
-        "Relevant GYB manual text:\n" + context
-    )
-}
-
+    system_msg = {
+        "role": "system",
+        "content": (
+            "You are a friendly SIYB GYB (Generate Your Business Idea) coach from "
+            "the ILO Start and Improve Your Business (SIYB) programme.\n"
+            "Use ONLY SIYB-style language. Do NOT invent book titles, authors or external programs.\n"
+            f"{stage_instruction}\n\n"
+            "Relevant GYB manual text:\n" + context
+        )
+    }
 
     user_msg = {"role": "user", "content": user_answer}
 
@@ -129,7 +139,9 @@ system_msg = {
         messages=[system_msg, user_msg],
         temperature=0.7,
     )
+
     return resp.choices[0].message.content
+
 
 
 # ================================
