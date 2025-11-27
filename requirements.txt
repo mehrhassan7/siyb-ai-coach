@@ -2,3 +2,4 @@ streamlit==1.51.0
 pyngrok==7.5.0
 groq==0.36.0
 pypdf==6.3.0
+rank-bm25
