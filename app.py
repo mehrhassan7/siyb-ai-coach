@@ -71,6 +71,22 @@ def get_relevant_snippets(query: str, k: int = 3, min_score: float = 0.5):
 
     return results
 
+# ================================
+# Helper: detect if user is asking a question
+# ================================
+def looks_like_question(text: str) -> bool:
+    """Very simple heuristic to detect a user question."""
+    if not text:
+        return False
+    t = text.strip().lower()
+    if t.endswith("?"):
+        return True
+    starters = (
+        "how", "what", "why", "when", "where", "who", "which",
+        "can ", "could ", "should ", "is ", "are ", "do ", "does ",
+    )
+    return any(t.startswith(s) for s in starters)
+
 
 
 # ================================
@@ -92,7 +108,8 @@ def llm_feedback(stage, user_answer, gyb_data):
             "Give simple, friendly entrepreneurship advice in 4–6 sentences.",
     }.get(stage, "Give friendly advice.")
 
-    chunks = get_relevant_chunks(user_answer, k=3)
+    chunks = get_relevant_snippets(user_answer, k=3)
+
     if chunks:
         context = "\n\n".join([f"- {c['content'][:300]}..." for c in chunks])
     else:
